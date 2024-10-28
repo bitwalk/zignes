@@ -1,6 +1,12 @@
 const std = @import("std");
 const opcodes = @import("opcodes.zig");
 
+pub const CpuError = error{
+    OutOfMemory,
+    InvalidOpCode,
+    InvalidAddressing,
+};
+
 pub const AddressingMode = enum {
     Immediate,
     ZeroPage,
@@ -24,8 +30,8 @@ pub const CPU = struct {
     opcodes: opcodes.OpCodesMap,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator) CPU {
-        const cpu = try allocator.create(CPU);
+    pub fn init(allocator: std.mem.Allocator) !*CPU {
+        const cpu: *CPU = try allocator.create(CPU);
         cpu.* = .{
             .register_a = 0,
             .register_x = 0,
@@ -105,15 +111,16 @@ pub const CPU = struct {
         self.program_counter = self.mem_read_u16(0xFFFC);
     }
 
-    pub fn load(self: *CPU, program: []const u8) void {
-        @memcpy(self.memory[0x8000 .. 0x8000 + program.len], program);
+    pub fn load(self: *CPU, program: []const u8) !void {
+        if (program.len + 0x8000 > self.memory.len) return error.OutOfMemory;
+        @memcpy(self.memory[0x8000..][0..program.len], program);
         self.mem_write_u16(0xFFFC, 0x8000);
     }
 
-    pub fn load_and_run(self: *CPU, program: []const u8) void {
-        self.load(program);
+    pub fn load_and_run(self: *CPU, program: []const u8) !void {
+        try self.load(program);
         self.reset();
-        self.run();
+        try self.run();
     }
 
     pub fn get_operand_address(self: *const CPU, mode: AddressingMode) u16 {
@@ -157,18 +164,15 @@ pub const CPU = struct {
         };
     }
 
-    pub fn run(self: *CPU) void {
+    pub fn run(self: *CPU) !void {
         while (true) {
             const code = self.mem_read(self.program_counter);
             self.program_counter += 1;
             const program_counter_state = self.program_counter;
 
-            const opcode = self.opcodes.get(code) orelse {
-                std.debug.print("OpCode {x} is not recognized\n", .{code});
-                return;
-            };
+            const opcode = self.opcodes.get(code) orelse return error.InvalidOpCode;
 
-            switch (opcode) {
+            switch (opcode.code) {
                 0xa9, 0xa5, 0xb5, 0xad, 0xbd, 0xb9, 0xa1, 0xb1 => {
                     self.lda(opcode.mode);
                 },
@@ -187,7 +191,7 @@ pub const CPU = struct {
 
 test "0xa9 lda immediate load data" {
     const allocator = std.heap.page_allocator;
-    var cpu = CPU.init(allocator);
+    var cpu = try CPU.init(allocator);
     defer cpu.deinit();
     try cpu.load_and_run(&[_]u8{ 0xa9, 0x05, 0x00 });
     try std.testing.expectEqual(@as(u8, 5), cpu.register_a);
@@ -197,53 +201,53 @@ test "0xa9 lda immediate load data" {
 
 test "0xa9 lda zero flag" {
     const allocator = std.heap.page_allocator;
-    var cpu = CPU.init(allocator);
+    var cpu = try CPU.init(allocator);
     defer cpu.deinit();
-    cpu.load_and_run(&[_]u8{ 0xa9, 0x00, 0x00 });
+    try cpu.load_and_run(&[_]u8{ 0xa9, 0x00, 0x00 });
     try std.testing.expect((cpu.status & 0b0000_0010) == 0b10);
 }
 
 test "0xa9 lda negative flag" {
     const allocator = std.heap.page_allocator;
-    var cpu = CPU.init(allocator);
+    var cpu = try CPU.init(allocator);
     defer cpu.deinit();
-    cpu.load_and_run(&[_]u8{ 0xa9, 0xff, 0x00 });
+    try cpu.load_and_run(&[_]u8{ 0xa9, 0xff, 0x00 });
     try std.testing.expect((cpu.status & 0b1000_0000) == 0b1000_0000);
 }
 
 test "LDA from memory" {
     const allocator = std.heap.page_allocator;
-    var cpu = CPU.init(allocator);
+    var cpu = try CPU.init(allocator);
     defer cpu.deinit();
     cpu.mem_write(0x10, 0x55);
 
     // In Zig we need to create a slice from an array
     const program = [_]u8{ 0xa5, 0x10, 0x00 };
-    cpu.load_and_run(&program);
+    try cpu.load_and_run(&program);
 
     try std.testing.expectEqual(@as(u8, 0x55), cpu.register_a);
 }
 
 test "0xaa tax move a to x" {
     const allocator = std.heap.page_allocator;
-    var cpu = CPU.init(allocator);
+    var cpu = try CPU.init(allocator);
     defer cpu.deinit();
-    cpu.load_and_run(&[_]u8{ 0xa9, 0x0A, 0xaa, 0x00 });
+    try cpu.load_and_run(&[_]u8{ 0xa9, 0x0A, 0xaa, 0x00 });
     try std.testing.expectEqual(@as(u8, 10), cpu.register_x);
 }
 
 test "5 ops working together" {
     const allocator = std.heap.page_allocator;
-    var cpu = CPU.init(allocator);
+    var cpu = try CPU.init(allocator);
     defer cpu.deinit();
-    cpu.load_and_run(&[_]u8{ 0xa9, 0xc0, 0xaa, 0xe8, 0x00 });
+    try cpu.load_and_run(&[_]u8{ 0xa9, 0xc0, 0xaa, 0xe8, 0x00 });
     try std.testing.expectEqual(@as(u8, 0xc1), cpu.register_x);
 }
 
 test "inx overflow" {
     const allocator = std.heap.page_allocator;
-    var cpu = CPU.init(allocator);
+    var cpu = try CPU.init(allocator);
     defer cpu.deinit();
-    cpu.load_and_run(&[_]u8{ 0xa9, 0xff, 0xaa, 0xe8, 0xe8, 0x00 });
+    try cpu.load_and_run(&[_]u8{ 0xa9, 0xff, 0xaa, 0xe8, 0xe8, 0x00 });
     try std.testing.expectEqual(@as(u8, 1), cpu.register_x);
 }
