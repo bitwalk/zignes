@@ -71,11 +71,16 @@ pub const CPU = struct {
         self.mem_write(pos + 1, hi);
     }
 
-    pub fn lda(self: *CPU, mode: AddressingMode) void {
+    fn lda(self: *CPU, mode: AddressingMode) void {
         const addr = self.get_operand_address(mode);
         const value = self.mem_read(addr);
         self.register_a = value;
         self.updateZeroAndNegativeFlags(self.register_a);
+    }
+
+    fn sta(self: *CPU, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_a);
     }
 
     fn tax(self: *CPU) void {
@@ -176,6 +181,9 @@ pub const CPU = struct {
                 0xa9, 0xa5, 0xb5, 0xad, 0xbd, 0xb9, 0xa1, 0xb1 => {
                     self.lda(opcode.mode);
                 },
+                0x85, 0x95, 0x8d, 0x9d, 0x99, 0x81, 0x91 => {
+                    self.sta(opcode.mode);
+                },
                 0xAA => self.tax(),
                 0xe8 => self.inx(),
                 0x00 => return,
@@ -226,6 +234,14 @@ test "LDA from memory" {
     try cpu.load_and_run(&program);
 
     try std.testing.expectEqual(@as(u8, 0x55), cpu.register_a);
+}
+
+test "0x85 sta store a in memory" {
+    const allocator = std.heap.page_allocator;
+    var cpu = try CPU.init(allocator);
+    defer cpu.deinit();
+    try cpu.load_and_run(&[_]u8{ 0xa9, 0x05, 0x85, 0x10, 0x00 });
+    try std.testing.expectEqual(@as(u8, 0x05), cpu.mem_read(0x10));
 }
 
 test "0xaa tax move a to x" {
