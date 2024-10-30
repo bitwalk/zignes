@@ -11,6 +11,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Add SDL2 package
+    exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/sdl2/include" });
+    exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/sdl2/lib" });
+
+    exe.linkSystemLibrary("SDL2");
+    exe.linkLibC();
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
