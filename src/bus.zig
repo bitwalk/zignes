@@ -159,6 +159,31 @@ test "Bus - ROM write protection" {
     try testing.expectEqual(@as(u8, 1), bus.memRead(0x8000));  // Should still read original value
 }
 
+test "Bus - debug output test" {
+    std.debug.print("\n=== Bus Test Debug Output ===\n", .{});
+    
+    var testRom = try createTestRom(testing.allocator);
+    defer testRom.deinit();
+
+    std.debug.print("\nTest ROM created:\n", .{});
+    std.debug.print("PRG ROM size: {d} bytes\n", .{testRom.prgRom.items.len});
+    
+    const resetLo = testRom.prgRom.items[testRom.prgRom.items.len - 4];
+    const resetHi = testRom.prgRom.items[testRom.prgRom.items.len - 3];
+    const resetAddr = @as(u16, resetHi) << 8 | resetLo;
+    std.debug.print("Reset vector: 0x{X:0>4}\n", .{resetAddr});
+
+    var bus = Bus.init(testRom);
+    
+    // Read through bus like CPU would
+    const busLo = bus.memRead(0xFFFC);
+    const busHi = bus.memRead(0xFFFD);
+    const busResetAddr = @as(u16, busHi) << 8 | busLo;
+    std.debug.print("Reset vector through bus: 0x{X:0>4}\n", .{busResetAddr});
+    
+    try testing.expectEqual(resetAddr, busResetAddr);
+}
+
 // Helper function to create a test ROM
 fn createTestRom(allocator: std.mem.Allocator) !Rom {
     // Create a minimal ROM with:
