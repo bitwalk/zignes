@@ -43,7 +43,7 @@ Currently in development.
 - [x] branch
 - [x] run method
 - [x] SDL2
-- [ ] Update load
+- [x] Update load
 - [ ] Refactor run to handle callbacks
 - [x] Instantiate CPU in main
 - [x] Load game code

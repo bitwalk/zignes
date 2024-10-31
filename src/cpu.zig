@@ -3,7 +3,7 @@ const opcodes = @import("opcodes.zig");
 
 const MEMORY_SIZE = 0x10000;
 const RESET_VECTOR = 0xFFFC;
-const ROM_START = 0x8000;
+const DEFAULT_ROM_START = 0x8000;
 
 const STACK = 0x0100;
 const STACK_RESET_VALUE = 0xFD;
@@ -496,14 +496,16 @@ pub const CPU = struct {
         self.programCounter = self.memReadU16(RESET_VECTOR);
     }
 
-    pub fn load(self: *CPU, program: []const u8) !void {
-        if (program.len + ROM_START > self.memory.len) return error.OutOfMemory;
-        @memcpy(self.memory[ROM_START..][0..program.len], program);
-        self.memWriteU16(RESET_VECTOR, ROM_START);
+    pub fn load(self: *CPU, program: []const u8, load_address: ?u16) !void {
+        const addr = load_address orelse DEFAULT_ROM_START;
+
+        if (program.len + addr > self.memory.len) return error.OutOfMemory;
+        @memcpy(self.memory[addr..][0..program.len], program);
+        self.memWriteU16(RESET_VECTOR, addr);
     }
 
     pub fn loadAndRun(self: *CPU, program: []const u8) !void {
-        try self.load(program);
+        try self.load(program, null);
         self.reset();
         try self.run();
     }
