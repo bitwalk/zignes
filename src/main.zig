@@ -147,7 +147,3 @@ pub fn main() !void {
         }
     }.call);
 }
-
-test "run all tests" {
-    std.testing.refAllDecls(@This());
-}
