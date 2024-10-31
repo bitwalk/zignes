@@ -15,12 +15,26 @@ pub const SDL = struct {
         b: u8,
     };
 
-    fn color(idx: u8) RGB {
-        return switch(idx) {
-            0 => .{ .r = 0, .g = 0, .b = 0 },    // black
-            1 => .{ .r = 255, .g = 255, .b = 255 }, // white
-            // Add more colors as needed for your snake game
-            else => .{ .r = 0, .g = 255, .b = 0 },  // default to green
+    // fn color(idx: u8) RGB {
+    //     return switch (idx) {
+    //         0 => .{ .r = 0, .g = 0, .b = 0 }, // black
+    //         1 => .{ .r = 255, .g = 255, .b = 255 }, // white
+    //         // Add more colors as needed for your snake game
+    //         else => .{ .r = 0, .g = 255, .b = 0 }, // default to green
+    //     };
+    // }
+
+    pub fn color(_: *SDL, byte: u8) c.SDL_Color {
+        return switch (byte) {
+            0 => .{ .r = 0, .g = 0, .b = 0, .a = 255 }, // BLACK
+            1 => .{ .r = 255, .g = 255, .b = 255, .a = 255 }, // WHITE
+            2, 9 => .{ .r = 128, .g = 128, .b = 128, .a = 255 }, // GREY
+            3, 10 => .{ .r = 255, .g = 0, .b = 0, .a = 255 }, // RED
+            4, 11 => .{ .r = 0, .g = 255, .b = 0, .a = 255 }, // GREEN
+            5, 12 => .{ .r = 0, .g = 0, .b = 255, .a = 255 }, // BLUE
+            6, 13 => .{ .r = 255, .g = 0, .b = 255, .a = 255 }, // MAGENTA
+            7, 14 => .{ .r = 255, .g = 255, .b = 0, .a = 255 }, // YELLOW
+            else => .{ .r = 0, .g = 255, .b = 255, .a = 255 }, // CYAN
         };
     }
 
@@ -31,9 +45,11 @@ pub const SDL = struct {
         errdefer c.SDL_Quit();
 
         const window = c.SDL_CreateWindow(
-            "NES Emulator",
-            c.SDL_WINDOWPOS_CENTERED, c.SDL_WINDOWPOS_CENTERED,
-            (32 * 10), (32 * 10),
+            "ZIGNES Emulator",
+            c.SDL_WINDOWPOS_CENTERED,
+            c.SDL_WINDOWPOS_CENTERED,
+            (32 * 10),
+            (32 * 10),
             c.SDL_WINDOW_SHOWN,
         ) orelse return error.SDLWindowCreationFailed;
         errdefer c.SDL_DestroyWindow(window);
@@ -74,20 +90,34 @@ pub const SDL = struct {
         c.SDL_Quit();
     }
 
-    pub fn handleEvents(_: *SDL) !bool {
+    pub fn handleEvents(_: *SDL, cpu: *CPU) !void {
         var event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&event) != 0) {
             switch (event.type) {
-                c.SDL_QUIT => return true,
+                c.SDL_QUIT => {
+                    // Handle quit
+                },
                 c.SDL_KEYDOWN => {
-                    if (event.key.keysym.scancode == c.SDL_SCANCODE_ESCAPE) {
-                        return true;
+                    const scancode = event.key.keysym.scancode;
+                    switch (scancode) {
+                        c.SDL_SCANCODE_W, c.SDL_SCANCODE_UP => {
+                            cpu.memWrite(0xff, 0x77);
+                        },
+                        c.SDL_SCANCODE_S, c.SDL_SCANCODE_DOWN => {
+                            cpu.memWrite(0xff, 0x73);
+                        },
+                        c.SDL_SCANCODE_A, c.SDL_SCANCODE_LEFT => {
+                            cpu.memWrite(0xff, 0x61);
+                        },
+                        c.SDL_SCANCODE_D, c.SDL_SCANCODE_RIGHT => {
+                            cpu.memWrite(0xff, 0x64);
+                        },
+                        else => {},
                     }
                 },
                 else => {},
             }
         }
-        return false;
     }
 
     pub fn clear(self: *SDL) !void {
@@ -99,46 +129,9 @@ pub const SDL = struct {
         c.SDL_RenderPresent(self.renderer);
     }
 
-    pub fn updateScreen(self: *SDL, cpu: *CPU, screen_state: []u8) !bool {
-        var frame_idx: usize = 0;
-        var update = false;
-        
-        var i: u16 = 0x0200;
-        while (i < 0x600) : (i += 1) {
-            const color_idx = cpu.memRead(i);
-            const rgb = color(color_idx);
-            
-            if (screen_state[frame_idx] != rgb.r or 
-                screen_state[frame_idx + 1] != rgb.g or 
-                screen_state[frame_idx + 2] != rgb.b) {
-                screen_state[frame_idx] = rgb.r;
-                screen_state[frame_idx + 1] = rgb.g;
-                screen_state[frame_idx + 2] = rgb.b;
-                update = true;
-            }
-            frame_idx += 3;
-        }
-
-        if (update) {
-            // Update texture with new screen state
-            if (c.SDL_UpdateTexture(
-                self.texture,
-                null,
-                screen_state.ptr,
-                32 * 3
-            ) != 0) return error.SDLTextureUpdateFailed;
-
-            // Copy texture to renderer
-            if (c.SDL_RenderCopy(
-                self.renderer,
-                self.texture,
-                null,
-                null
-            ) != 0) return error.SDLRenderCopyFailed;
-
-            self.present();
-        }
-
-        return update;
+    pub fn updateScreen(self: *SDL, screen_state: []u8) void {
+        _ = c.SDL_UpdateTexture(self.texture, null, screen_state.ptr, 32 * 3);
+        _ = c.SDL_RenderCopy(self.renderer, self.texture, null, null);
+        self.present();
     }
-}; 
+};

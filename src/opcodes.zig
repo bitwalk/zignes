@@ -83,30 +83,31 @@ pub const cpu_ops_codes = [_]OpCode{
     OpCode.init(0x11, "ORA", 2, 5, .IndirectY), // +1 if page crossed
 
     // Shifts
-    OpCode.init(0x0a, "ASL", 1, 2, .NoneAddressing),
+    OpCode.init(0x0a, "ASL", 1, 2, .NoneAddressing), // Accumulator
     OpCode.init(0x06, "ASL", 2, 5, .ZeroPage),
     OpCode.init(0x16, "ASL", 2, 6, .ZeroPageX),
     OpCode.init(0x0e, "ASL", 3, 6, .Absolute),
     OpCode.init(0x1e, "ASL", 3, 7, .AbsoluteX),
 
-    OpCode.init(0x4a, "LSR", 1, 2, .NoneAddressing),
+    OpCode.init(0x4a, "LSR", 1, 2, .NoneAddressing), // Accumulator
     OpCode.init(0x46, "LSR", 2, 5, .ZeroPage),
     OpCode.init(0x56, "LSR", 2, 6, .ZeroPageX),
     OpCode.init(0x4e, "LSR", 3, 6, .Absolute),
     OpCode.init(0x5e, "LSR", 3, 7, .AbsoluteX),
 
-    OpCode.init(0x2a, "ROL", 1, 2, .NoneAddressing),
+    OpCode.init(0x2a, "ROL", 1, 2, .NoneAddressing), // Accumulator
     OpCode.init(0x26, "ROL", 2, 5, .ZeroPage),
     OpCode.init(0x36, "ROL", 2, 6, .ZeroPageX),
     OpCode.init(0x2e, "ROL", 3, 6, .Absolute),
     OpCode.init(0x3e, "ROL", 3, 7, .AbsoluteX),
 
-    OpCode.init(0x6a, "ROR", 1, 2, .NoneAddressing),
+    OpCode.init(0x6a, "ROR", 1, 2, .NoneAddressing), // Accumulator
     OpCode.init(0x66, "ROR", 2, 5, .ZeroPage),
     OpCode.init(0x76, "ROR", 2, 6, .ZeroPageX),
     OpCode.init(0x6e, "ROR", 3, 6, .Absolute),
     OpCode.init(0x7e, "ROR", 3, 7, .AbsoluteX),
 
+    // Increments, Decrements
     OpCode.init(0xe6, "INC", 2, 5, .ZeroPage),
     OpCode.init(0xf6, "INC", 2, 6, .ZeroPageX),
     OpCode.init(0xee, "INC", 3, 6, .Absolute),
@@ -115,14 +116,15 @@ pub const cpu_ops_codes = [_]OpCode{
     OpCode.init(0xe8, "INX", 1, 2, .NoneAddressing),
     OpCode.init(0xc8, "INY", 1, 2, .NoneAddressing),
 
-    OpCode.init(0xe7, "DEC", 2, 5, .ZeroPage),
-    OpCode.init(0xf7, "DEC", 2, 6, .ZeroPageX),
+    OpCode.init(0xc6, "DEC", 2, 5, .ZeroPage),
+    OpCode.init(0xd6, "DEC", 2, 6, .ZeroPageX),
     OpCode.init(0xce, "DEC", 3, 6, .Absolute),
     OpCode.init(0xde, "DEC", 3, 7, .AbsoluteX),
 
     OpCode.init(0xca, "DEX", 1, 2, .NoneAddressing),
     OpCode.init(0x88, "DEY", 1, 2, .NoneAddressing),
 
+    // Compare operations
     OpCode.init(0xc9, "CMP", 2, 2, .Immediate),
     OpCode.init(0xc5, "CMP", 2, 3, .ZeroPage),
     OpCode.init(0xd5, "CMP", 2, 4, .ZeroPageX),
@@ -132,35 +134,36 @@ pub const cpu_ops_codes = [_]OpCode{
     OpCode.init(0xc1, "CMP", 2, 6, .IndirectX),
     OpCode.init(0xd1, "CMP", 2, 5, .IndirectY), // +1 if page crossed
 
-    OpCode.init(0xc6, "CPX", 2, 3, .Immediate),
-    OpCode.init(0xe0, "CPX", 2, 2, .ZeroPage),
-    OpCode.init(0xe4, "CPX", 2, 3, .Absolute),
+    OpCode.init(0xe0, "CPX", 2, 2, .Immediate),
+    OpCode.init(0xe4, "CPX", 2, 3, .ZeroPage),
+    OpCode.init(0xec, "CPX", 3, 4, .Absolute),
 
-    OpCode.init(0xc0, "CPY", 2, 3, .Immediate),
+    OpCode.init(0xc0, "CPY", 2, 2, .Immediate),
     OpCode.init(0xc4, "CPY", 2, 3, .ZeroPage),
     OpCode.init(0xcc, "CPY", 3, 4, .Absolute),
 
-    // Branching
+    // Branches
     OpCode.init(0x4c, "JMP", 3, 3, .NoneAddressing),
-    OpCode.init(0x6c, "JMP", 3, 5, .NoneAddressing), // includes 6502 indirect jump bug
+    OpCode.init(0x6c, "JMP", 3, 5, .NoneAddressing), // Indirect with 6502 bug
 
     OpCode.init(0x20, "JSR", 3, 6, .NoneAddressing),
     OpCode.init(0x60, "RTS", 1, 6, .NoneAddressing),
 
     OpCode.init(0x40, "RTI", 1, 6, .NoneAddressing),
-    OpCode.init(0xd0, "BNE", 2, 2, .NoneAddressing), // +1 if branch succeeds
-    OpCode.init(0x70, "BVS", 2, 2, .NoneAddressing), // +1 if branch succeeds
-    OpCode.init(0x50, "BVC", 2, 2, .NoneAddressing), // +1 if branch succeeds
-    OpCode.init(0x30, "BMI", 2, 2, .NoneAddressing), // +1 if branch succeeds
-    OpCode.init(0xf0, "BEQ", 2, 2, .NoneAddressing), // +1 if branch succeeds
-    OpCode.init(0xb0, "BCS", 2, 2, .NoneAddressing), // +1 if branch succeeds
-    OpCode.init(0x90, "BCC", 2, 2, .NoneAddressing), // +1 if branch succeeds
-    OpCode.init(0x10, "BPL", 2, 2, .NoneAddressing), // +1 if branch succeeds
+
+    OpCode.init(0xd0, "BNE", 2, 2, .NoneAddressing), // +1 if branch succeeds +2 if to a new page
+    OpCode.init(0x70, "BVS", 2, 2, .NoneAddressing),
+    OpCode.init(0x50, "BVC", 2, 2, .NoneAddressing),
+    OpCode.init(0x30, "BMI", 2, 2, .NoneAddressing),
+    OpCode.init(0xf0, "BEQ", 2, 2, .NoneAddressing),
+    OpCode.init(0xb0, "BCS", 2, 2, .NoneAddressing),
+    OpCode.init(0x90, "BCC", 2, 2, .NoneAddressing),
+    OpCode.init(0x10, "BPL", 2, 2, .NoneAddressing),
 
     OpCode.init(0x24, "BIT", 2, 3, .ZeroPage),
     OpCode.init(0x2c, "BIT", 3, 4, .Absolute),
 
-    // Stores, Loads
+    // Loads
     OpCode.init(0xa9, "LDA", 2, 2, .Immediate),
     OpCode.init(0xa5, "LDA", 2, 3, .ZeroPage),
     OpCode.init(0xb5, "LDA", 2, 4, .ZeroPageX),
@@ -182,6 +185,7 @@ pub const cpu_ops_codes = [_]OpCode{
     OpCode.init(0xac, "LDY", 3, 4, .Absolute),
     OpCode.init(0xbc, "LDY", 3, 4, .AbsoluteX), // +1 if page crossed
 
+    // Stores
     OpCode.init(0x85, "STA", 2, 3, .ZeroPage),
     OpCode.init(0x95, "STA", 2, 4, .ZeroPageX),
     OpCode.init(0x8d, "STA", 3, 4, .Absolute),
@@ -199,7 +203,7 @@ pub const cpu_ops_codes = [_]OpCode{
     OpCode.init(0x8c, "STY", 3, 4, .Absolute),
 
     // Flags clear
-    OpCode.init(0xd8, "CLD", 1, 2, .NoneAddressing),
+    OpCode.init(0xD8, "CLD", 1, 2, .NoneAddressing),
     OpCode.init(0x58, "CLI", 1, 2, .NoneAddressing),
     OpCode.init(0xb8, "CLV", 1, 2, .NoneAddressing),
     OpCode.init(0x18, "CLC", 1, 2, .NoneAddressing),
@@ -207,19 +211,20 @@ pub const cpu_ops_codes = [_]OpCode{
     OpCode.init(0x78, "SEI", 1, 2, .NoneAddressing),
     OpCode.init(0xf8, "SED", 1, 2, .NoneAddressing),
 
-    // Transfer
+    // Register transfers
     OpCode.init(0xaa, "TAX", 1, 2, .NoneAddressing),
-    OpCode.init(0x8a, "TXA", 1, 2, .NoneAddressing),
     OpCode.init(0xa8, "TAY", 1, 2, .NoneAddressing),
-    OpCode.init(0x98, "TYA", 1, 2, .NoneAddressing),
     OpCode.init(0xba, "TSX", 1, 2, .NoneAddressing),
+    OpCode.init(0x8a, "TXA", 1, 2, .NoneAddressing),
     OpCode.init(0x9a, "TXS", 1, 2, .NoneAddressing),
+    OpCode.init(0x98, "TYA", 1, 2, .NoneAddressing),
 
-    // Stack Operations
+    // Stack operations
     OpCode.init(0x48, "PHA", 1, 3, .NoneAddressing),
     OpCode.init(0x68, "PLA", 1, 4, .NoneAddressing),
     OpCode.init(0x08, "PHP", 1, 3, .NoneAddressing),
     OpCode.init(0x28, "PLP", 1, 4, .NoneAddressing),
+
 };
 
 // Function to create the opcodes map
