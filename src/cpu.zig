@@ -1,5 +1,6 @@
 const std = @import("std");
 const opcodes = @import("opcodes.zig");
+const Bus = @import("bus.zig").Bus;
 
 const MEMORY_SIZE = 0x10000;
 const RESET_VECTOR = 0xFFFC;
@@ -61,29 +62,23 @@ pub const CPU = struct {
     status: u8,
     programCounter: u16,
     stackPointer: u8,
-    memory: [MEMORY_SIZE]u8,
     opcodes: opcodes.OpCodesMap,
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator) !*CPU {
-        const cpu: *CPU = try allocator.create(CPU);
-        cpu.* = .{
+    bus: Bus,
+    pub fn init(allocator: std.mem.Allocator) !CPU {
+        return CPU {
             .registerA = 0,
             .registerX = 0,
             .registerY = 0,
             .status = CpuFlags.fromBitsTruncate(0b100100),
             .programCounter = 0,
             .stackPointer = STACK_RESET_VALUE,
-            .memory = [_]u8{0} ** MEMORY_SIZE,
             .opcodes = try opcodes.createOpcodesMap(allocator),
-            .allocator = allocator,
+            .bus = Bus.init(),
         };
-        return cpu;
     }
 
     pub fn deinit(self: *CPU) void {
         self.opcodes.deinit();
-        self.allocator.destroy(self);
     }
 
     pub fn debugState(self: *CPU) void {
@@ -104,11 +99,11 @@ pub const CPU = struct {
     }
 
     pub fn memRead(self: *const CPU, addr: u16) u8 {
-        return self.memory[addr];
+        return self.bus.memRead(addr);
     }
 
     pub fn memWrite(self: *CPU, addr: u16, data: u8) void {
-        self.memory[addr] = data;
+        self.bus.memWrite(addr, data);
     }
 
     pub fn memReadU16(self: *const CPU, pos: u16) u16 {
@@ -433,20 +428,6 @@ pub const CPU = struct {
         self.updateZeroAndNegativeFlags(self.registerX);
     }
 
-    // fn _dec(self: *CPU, mode: AddressingMode) u8 {
-    //     const addr = self.getOperandAddress(mode);
-    //     const old_val = self.memRead(addr);
-    //     const data = old_val -% 1;
-
-    //         // Debug print
-    //     std.debug.print("\nDEC operation: addr=0x{X:0>4} val=0x{X:0>2} -> 0x{X:0>2}\n", 
-    //     .{addr, old_val, data});
-
-    //     self.memWrite(addr, data);
-    //     self.updateZeroAndNegativeFlags(data);
-    //     return data;
-    // }
-
     fn _dec(self: *CPU, mode: AddressingMode) u8 {
         const addr = self.getOperandAddress(mode);
         const data = self.memRead(addr);
@@ -539,8 +520,10 @@ pub const CPU = struct {
     pub fn load(self: *CPU, program: []const u8, load_address: ?u16) !void {
         const addr = load_address orelse DEFAULT_ROM_START;
 
-        if (program.len + addr > self.memory.len) return error.OutOfMemory;
-        @memcpy(self.memory[addr..][0..program.len], program);
+        var i: u16 = 0;
+        while (i < program.len) : (i += 1) {
+            self.memWrite(addr + i, program[i]);
+        }
         self.memWriteU16(RESET_VECTOR, addr);
     }
 
