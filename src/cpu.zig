@@ -62,18 +62,19 @@ pub const CPU = struct {
     status: u8,
     programCounter: u16,
     stackPointer: u8,
-    opcodes: opcodes.OpCodesMap,
     bus: Bus,
-    pub fn init(allocator: std.mem.Allocator) !CPU {
-        return CPU {
+    opcodes: opcodes.OpCodesMap,
+
+    pub fn init(allocator: std.mem.Allocator, bus: Bus) !CPU {
+        return CPU{
             .registerA = 0,
             .registerX = 0,
             .registerY = 0,
             .status = CpuFlags.fromBitsTruncate(0b100100),
             .programCounter = 0,
             .stackPointer = STACK_RESET_VALUE,
+            .bus = bus,
             .opcodes = try opcodes.createOpcodesMap(allocator),
-            .bus = Bus.init(),
         };
     }
 
@@ -513,8 +514,12 @@ pub const CPU = struct {
         self.registerY = 0;
         self.stackPointer = STACK_RESET_VALUE;
         self.status = CpuFlags.fromBitsTruncate(0b100100);
-
-        self.programCounter = self.memReadU16(RESET_VECTOR);
+        // Read reset vector
+        const lo = self.memRead(0xFFFC);
+        const hi = self.memRead(0xFFFD);
+        self.programCounter = @as(u16, hi) << 8 | lo;
+        
+        std.debug.print("CPU Reset - Program Counter set to: 0x{X:0>4}\n", .{self.programCounter});
     }
 
     pub fn load(self: *CPU, program: []const u8, load_address: ?u16) !void {
@@ -836,7 +841,7 @@ pub const CPU = struct {
 
 test "0xa9 lda immediate load data" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x05, 0x00 });
     try std.testing.expectEqual(@as(u8, 5), cpu.registerA);
@@ -846,7 +851,7 @@ test "0xa9 lda immediate load data" {
 
 test "0xa9 lda zero flag" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x00, 0x00 });
     try std.testing.expect((cpu.status & 0b0000_0010) == 0b10);
@@ -854,7 +859,7 @@ test "0xa9 lda zero flag" {
 
 test "0xa9 lda negative flag" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0xff, 0x00 });
     try std.testing.expect((cpu.status & 0b1000_0000) == 0b1000_0000);
@@ -862,7 +867,7 @@ test "0xa9 lda negative flag" {
 
 test "LDA from memory" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     cpu.memWrite(0x10, 0x55);
 
@@ -875,7 +880,7 @@ test "LDA from memory" {
 
 test "0x85 sta store a in memory" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x05, 0x85, 0x10, 0x00 });
     try std.testing.expectEqual(@as(u8, 0x05), cpu.memRead(0x10));
@@ -883,7 +888,7 @@ test "0x85 sta store a in memory" {
 
 test "0xaa tax move a to x" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x0A, 0xaa, 0x00 });
     try std.testing.expectEqual(@as(u8, 10), cpu.registerX);
@@ -891,7 +896,7 @@ test "0xaa tax move a to x" {
 
 test "5 ops working together" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0xc0, 0xaa, 0xe8, 0x00 });
     try std.testing.expectEqual(@as(u8, 0xc1), cpu.registerX);
@@ -899,7 +904,7 @@ test "5 ops working together" {
 
 test "inx overflow" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0xff, 0xaa, 0xe8, 0xe8, 0x00 });
     try std.testing.expectEqual(@as(u8, 1), cpu.registerX);
@@ -907,7 +912,7 @@ test "inx overflow" {
 
 test "0xa2 ldx immediate load data" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa2, 0x05, 0x00 });
     try std.testing.expectEqual(@as(u8, 5), cpu.registerX);
@@ -917,7 +922,7 @@ test "0xa2 ldx immediate load data" {
 
 test "0xa0 ldy immediate load data" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa0, 0x05, 0x00 });
     try std.testing.expectEqual(@as(u8, 5), cpu.registerY);
@@ -927,7 +932,7 @@ test "0xa0 ldy immediate load data" {
 
 test "0xc8 iny increment y" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa0, 0x05, 0xc8, 0x00 });
     try std.testing.expectEqual(@as(u8, 6), cpu.registerY);
@@ -935,7 +940,7 @@ test "0xc8 iny increment y" {
 
 test "0x88 dey decrement y" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa0, 0x05, 0x88, 0x00 });
     try std.testing.expectEqual(@as(u8, 4), cpu.registerY);
@@ -943,7 +948,7 @@ test "0x88 dey decrement y" {
 
 test "0xca dex decrement x" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa2, 0x05, 0xca, 0x00 });
     try std.testing.expectEqual(@as(u8, 4), cpu.registerX);
@@ -951,7 +956,7 @@ test "0xca dex decrement x" {
 
 test "0x29 and immediate" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x05, 0x29, 0x03, 0x00 });
     try std.testing.expectEqual(@as(u8, 1), cpu.registerA);
@@ -959,7 +964,7 @@ test "0x29 and immediate" {
 
 test "0x49 eor immediate" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x05, 0x49, 0x03, 0x00 });
     try std.testing.expectEqual(@as(u8, 6), cpu.registerA);
@@ -967,7 +972,7 @@ test "0x49 eor immediate" {
 
 test "0x09 ora immediate" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x05, 0x09, 0x03, 0x00 });
     try std.testing.expectEqual(@as(u8, 7), cpu.registerA);
@@ -975,7 +980,7 @@ test "0x09 ora immediate" {
 
 test "0x69 adc immediate" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x05, 0x69, 0x03, 0x00 });
     try std.testing.expectEqual(@as(u8, 8), cpu.registerA);
@@ -984,7 +989,7 @@ test "0x69 adc immediate" {
 
 test "0xe9 sbc immediate" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x05, 0xe9, 0x03, 0x00 });
     try std.testing.expectEqual(@as(u8, 1), cpu.registerA);
@@ -993,7 +998,7 @@ test "0xe9 sbc immediate" {
 
 test "0xa8 tay transfer a to y" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x0A, 0xa8, 0x00 });
     try std.testing.expectEqual(@as(u8, 10), cpu.registerY);
@@ -1001,7 +1006,7 @@ test "0xa8 tay transfer a to y" {
 
 test "0xba tsx transfer stack pointer to x" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     // No need to manually set stack pointer, it's initialized to STACK_RESET_VALUE (0xFD)
     try cpu.loadAndRun(&[_]u8{ 0xba, 0x00 });
@@ -1010,7 +1015,7 @@ test "0xba tsx transfer stack pointer to x" {
 
 test "0x8a txa transfer x to a" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     // Use LDX immediate to set X register, then transfer to A
     try cpu.loadAndRun(&[_]u8{ 0xa2, 0x10, 0x8a, 0x00 });
@@ -1019,7 +1024,7 @@ test "0x8a txa transfer x to a" {
 
 test "0x9a txs transfer x to stack pointer" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     // Use LDX immediate to set X register, then transfer to stack pointer
     try cpu.loadAndRun(&[_]u8{ 0xa2, 0x10, 0x9a, 0x00 });
@@ -1028,7 +1033,7 @@ test "0x9a txs transfer x to stack pointer" {
 
 test "0x98 tya transfer y to a" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     // Use LDY immediate to set Y register, then transfer to A
     try cpu.loadAndRun(&[_]u8{ 0xa0, 0x10, 0x98, 0x00 });
@@ -1037,7 +1042,7 @@ test "0x98 tya transfer y to a" {
 
 test "0x0a asl accumulator" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x02, 0x0a, 0x00 });
     try std.testing.expectEqual(@as(u8, 0x04), cpu.registerA);
@@ -1046,7 +1051,7 @@ test "0x0a asl accumulator" {
 
 test "0x0a asl accumulator with carry" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0b10000010, 0x0a, 0x00 });
     try std.testing.expectEqual(@as(u8, 0b00000100), cpu.registerA);
@@ -1055,7 +1060,7 @@ test "0x0a asl accumulator with carry" {
 
 test "0x4a lsr accumulator" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x04, 0x4a, 0x00 });
     try std.testing.expectEqual(@as(u8, 0x02), cpu.registerA);
@@ -1064,7 +1069,7 @@ test "0x4a lsr accumulator" {
 
 test "0x4a lsr accumulator with carry" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0b00000011, 0x4a, 0x00 });
     try std.testing.expectEqual(@as(u8, 0b00000001), cpu.registerA);
@@ -1073,7 +1078,7 @@ test "0x4a lsr accumulator with carry" {
 
 test "0x2a rol accumulator" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x02, 0x2a, 0x00 });
     try std.testing.expectEqual(@as(u8, 0x04), cpu.registerA);
@@ -1082,7 +1087,7 @@ test "0x2a rol accumulator" {
 
 test "0x6a ror accumulator" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0xa9, 0x04, 0x6a, 0x00 });
     try std.testing.expectEqual(@as(u8, 0x02), cpu.registerA);
@@ -1091,7 +1096,7 @@ test "0x6a ror accumulator" {
 
 test "0xd8 cld clear decimal flag" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     cpu.status |= CpuFlags.DECIMAL_MODE;
     try cpu.loadAndRun(&[_]u8{ 0xd8, 0x00 });
@@ -1100,7 +1105,7 @@ test "0xd8 cld clear decimal flag" {
 
 test "0x58 cli clear interrupt disable" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     cpu.status |= CpuFlags.INTERRUPT_DISABLE;
     try cpu.loadAndRun(&[_]u8{ 0x58, 0x00 });
@@ -1109,7 +1114,7 @@ test "0x58 cli clear interrupt disable" {
 
 test "0xb8 clv clear overflow" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     cpu.status |= CpuFlags.OVERFLOW;
     try cpu.loadAndRun(&[_]u8{ 0xb8, 0x00 });
@@ -1118,7 +1123,7 @@ test "0xb8 clv clear overflow" {
 
 test "0x18 clc clear carry" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     cpu.status |= CpuFlags.CARRY;
     try cpu.loadAndRun(&[_]u8{ 0x18, 0x00 });
@@ -1127,7 +1132,7 @@ test "0x18 clc clear carry" {
 
 test "0x38 sec set carry" {
     const allocator = std.heap.page_allocator;
-    var cpu = try CPU.init(allocator);
+    var cpu = try CPU.init(allocator, Bus.init());
     defer cpu.deinit();
     try cpu.loadAndRun(&[_]u8{ 0x38, 0x00 });
     try std.testing.expect((cpu.status & CpuFlags.CARRY) == CpuFlags.CARRY);
@@ -1138,7 +1143,7 @@ test "dec operation boundary conditions and snake movement simulation" {
     
     // Test case 1: Basic DEC operation with detailed debugging
     {
-        var cpu = try CPU.init(allocator);
+        var cpu = try CPU.init(allocator, Bus.init());
         defer cpu.deinit();
         
         const program = [_]u8{

@@ -1,6 +1,8 @@
 const std = @import("std");
 const CPU = @import("cpu.zig").CPU;
 const SDL = @import("sdl.zig").SDL;
+const Rom = @import("rom.zig").Rom;
+const Bus = @import("bus.zig").Bus;
 
 const snake_game_code = [309]u8{
         0x20, 0x06, 0x06, 0x20, 0x38, 0x06, 0x20, 0x0d, 0x06, 0x20, 0x2a, 0x06, 0x60, 0xa9, 0x02,
@@ -49,78 +51,61 @@ pub fn readScreenState(cpu: *CPU, sdl: *SDL, frame: *[32 * 3 * 32]u8) bool {
     return update;
 }
 
-fn handleUserInput(cpu: *CPU, sdl: *SDL) !void {
-    try sdl.handleEvents(cpu);
-}
-
-const GameContext = struct {
-    cpu: *CPU,
-    sdl: SDL,
-    screenState: [32 * 3 * 32]u8,
-    prng: std.rand.DefaultPrng,
-
-    pub fn init(alloc: std.mem.Allocator) !@This() {
-        var cpu = try CPU.init(alloc);
-        errdefer cpu.deinit();
-        
-        var sdl = try SDL.init();
-        errdefer sdl.deinit();
-
-        try cpu.load(snake_game_code[0..], 0x0600);
-        cpu.reset();
-
-        return .{
-            .cpu = cpu,
-            .sdl = sdl,
-            .screenState = [_]u8{0} ** (32 * 3 * 32),
-            .prng = std.rand.DefaultPrng.init(@intCast(std.time.timestamp())),
-        };
-    }
-
-    pub fn deinit(self: *@This()) void {
-        self.cpu.deinit();
-        self.sdl.deinit();
-    }
-
-    pub fn run(self: *@This()) !void {
-        const callback = struct {
-            ctx: *GameContext,
-
-            pub fn create(ctx: *GameContext) @This() {
-                return .{ .ctx = ctx };
-            }
-
-            pub fn call(cb: @This()) !void {
-                try handleUserInput(cb.ctx.cpu, &cb.ctx.sdl);
-                cb.ctx.cpu.memWrite(0xfe, cb.ctx.prng.random().intRangeAtMost(u8, 1, 16));
-                
-                if (readScreenState(cb.ctx.cpu, &cb.ctx.screenState)) {
-                    std.time.sleep(70_000);
-                }
-            }
-        }.create(self);
-
-        try self.cpu.runWithCallback(callback);
-    }
-};
+// fn handleUserInput(cpu: *CPU, sdl: *SDL) !void {
+//     try sdl.handleEvents(cpu);
+// }
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var _cpu = try CPU.init(allocator);
-    defer _cpu.deinit();
+    std.debug.print("\n=== Setup SDL and RNG ===\n", .{});
 
     var _sdl = try SDL.init();
     defer _sdl.deinit();
 
     var _prng = std.rand.DefaultPrng.init(@intCast(std.time.timestamp()));
 
-    try _cpu.load(snake_game_code[0..], 0x0600);
-    _cpu.reset();
-
     var _screen_state: [32 * 3 * 32]u8 = undefined;
+
+    std.debug.print("\n=== Starting NES Emulator ===\n", .{});
+
+   // Load ROM file
+    const file = try std.fs.cwd().openFile("snake.nes", .{});
+    defer file.close();
+
+    const fileSize = try file.getEndPos();
+    std.debug.print("ROM file size: {d} bytes\n", .{fileSize});
+    
+    var romData = try allocator.alloc(u8, fileSize);
+    defer allocator.free(romData);
+    _ = try file.readAll(romData);
+
+    // Print iNES header
+    std.debug.print("iNES Header: ", .{});
+    for (romData[0..16]) |byte| {
+        std.debug.print("{X:0>2} ", .{byte});
+    }
+    std.debug.print("\n", .{});
+
+    // Create ROM
+    std.debug.print("\nInitializing ROM...\n", .{});
+    var rom = try Rom.init(allocator, romData);
+    defer rom.deinit();
+
+    // Create Bus with ROM
+    std.debug.print("\nInitializing Bus...\n", .{});
+    const bus = Bus.init(rom);
+
+    // Create CPU with Bus
+    std.debug.print("\nInitializing CPU...\n", .{});
+    var _cpu = try CPU.init(allocator, bus);
+    defer _cpu.deinit();
+
+    // Reset and start CPU
+    std.debug.print("\nResetting CPU...\n", .{});
+    _cpu.reset();
 
     const Context = struct {
         sdl: *SDL,
@@ -134,9 +119,11 @@ pub fn main() !void {
         .prng = &_prng,
     };
 
+    std.debug.print("\nStarting CPU execution...\n", .{});
+
     try _cpu.runWithCallback(&_ctx, struct {
         pub fn call(ctx: *Context, cpu: *CPU) !void {
-            try handleUserInput(cpu, ctx.sdl);
+            try ctx.sdl.handleEvents(cpu);
 
             cpu.memWrite(0xfe, ctx.prng.random().intRangeAtMost(u8, 1, 16));
 

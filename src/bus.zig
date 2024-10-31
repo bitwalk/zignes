@@ -1,5 +1,7 @@
 const std = @import("std");
 const Mem = @import("cpu.zig").Mem;
+const Rom = @import("rom.zig").Rom;
+const testing = @import("std").testing;
 
 //  _______________ $10000  _______________
 // | PRG-ROM       |       |               |
@@ -34,44 +36,55 @@ const PPU_REGISTERS: u16 = 0x2000;
 const PPU_REGISTERS_MIRRORS_END: u16 = 0x3FFF;
 
 pub const Bus = struct {
-    cpu_vram: [2048]u8,
-    program_rom: [0x8000]u8,
-    reset_vector: [2]u8,
+    cpuVram: [2048]u8,
+    rom: Rom,
 
-    // Constructor
-    pub fn init() Bus {
+    pub fn init(rom: Rom) Bus {
+        std.debug.print("\nBus Initialization:\n", .{});
+        std.debug.print("PRG ROM size: {d} bytes\n", .{rom.prgRom.items.len});
+        
+        // Print reset vector
+        const resetLo = rom.prgRom.items[rom.prgRom.items.len - 4];
+        const resetHi = rom.prgRom.items[rom.prgRom.items.len - 3];
+        const resetAddr = @as(u16, resetHi) << 8 | resetLo;
+        std.debug.print("Reset vector: 0x{X:0>4}\n", .{resetAddr});
+        
+        // Print first few bytes of PRG ROM
+        std.debug.print("First 16 bytes of PRG ROM: ", .{});
+        const bytesToShow = if (rom.prgRom.items.len >= 16) 16 else rom.prgRom.items.len;
+        for (rom.prgRom.items[0..bytesToShow]) |byte| {
+            std.debug.print("{X:0>2} ", .{byte});
+        }
+        std.debug.print("\n", .{});
+
         return Bus{
-            .cpu_vram = [_]u8{0} ** 2048,
-            .program_rom = [_]u8{0} ** 0x8000,
-            .reset_vector = [_]u8{0} ** 2,
+            .cpuVram = [_]u8{0} ** 2048,
+            .rom = rom,
         };
     }
 
-    // Memory interface implementation
     pub fn memRead(self: *const Bus, addr: u16) u8 {
         return switch (addr) {
             RAM...RAM_MIRRORS_END => {
-                const mirror_down_addr = addr & 0b00000111_11111111;
-                return self.cpu_vram[mirror_down_addr];
+                const mirrorDownAddr = addr & 0b00000111_11111111;
+                return self.cpuVram[mirrorDownAddr];
             },
             PPU_REGISTERS...PPU_REGISTERS_MIRRORS_END => {
-                const mirror_down_addr = addr & 0b00100000_00000111;
-                _ = mirror_down_addr;
+                const mirrorDownAddr = addr & 0b00100000_00000111;
+                _ = mirrorDownAddr;
                 @panic("PPU is not supported yet");
             },
-            0x8000...0xFFFB => {
-                const mirror_down_addr = addr - 0x8000;
-                return self.program_rom[mirror_down_addr];
-            },
-            0xFFFC...0xFFFD => {
-                return self.reset_vector[addr - 0xFFFC];
-            },
-            0xFFFE...0xFFFF => {
-                const mirror_down_addr = addr - 0x8000;
-                return self.program_rom[mirror_down_addr];
+            0x8000...0xFFFF => {
+                const mirrorDownAddr = addr - 0x8000;
+                // Handle ROM mirroring if PRG-ROM is 16KB
+                const prgRomAddr = if (self.rom.prgRom.items.len == 0x4000)
+                    mirrorDownAddr & 0x3FFF // Mirror every 16KB
+                else
+                    mirrorDownAddr;
+                return self.rom.prgRom.items[prgRomAddr];
             },
             else => {
-                std.debug.print("Ignoring mem access at {}\n", .{addr});
+                std.debug.print("Ignoring mem access at {X}\n", .{addr});
                 return 0;
             },
         };
@@ -80,28 +93,91 @@ pub const Bus = struct {
     pub fn memWrite(self: *Bus, addr: u16, data: u8) void {
         switch (addr) {
             RAM...RAM_MIRRORS_END => {
-                const mirror_down_addr = addr & 0b11111111111;
-                self.cpu_vram[mirror_down_addr] = data;
+                const mirrorDownAddr = addr & 0b11111111111;
+                self.cpuVram[mirrorDownAddr] = data;
             },
             PPU_REGISTERS...PPU_REGISTERS_MIRRORS_END => {
-                const mirror_down_addr = addr & 0b00100000_00000111;
-                _ = mirror_down_addr;
+                const mirrorDownAddr = addr & 0b00100000_00000111;
+                _ = mirrorDownAddr;
                 @panic("PPU is not supported yet");
             },
-            0x8000...0xFFFB => {
-                const mirror_down_addr = addr - 0x8000;
-                self.program_rom[mirror_down_addr] = data;
-            },
-            0xFFFC...0xFFFD => {
-                self.reset_vector[addr - 0xFFFC] = data;
-            },
-            0xFFFE...0xFFFF => {
-                const mirror_down_addr = addr - 0x8000;
-                self.program_rom[mirror_down_addr] = data;
+            0x8000...0xFFFF => {
+                if (self.rom.mapper == 0) {
+                    std.debug.print("Attempting to write to ROM at {X}\n", .{addr});
+                    return;
+                } else {
+                    @panic("Mapper not implemented yet");
+                }
             },
             else => {
-                std.debug.print("Ignoring mem write-access at {}\n", .{addr});
+                std.debug.print("Ignoring mem write-access at {X}\n", .{addr});
             },
         }
     }
 };
+
+test "Bus - basic memory operations" {
+    // Create a test ROM with known data
+    var testRom = try createTestRom(testing.allocator);
+    defer testRom.deinit();
+
+    var bus = Bus.init(testRom);
+
+    // Test RAM read/write
+    try testing.expectEqual(@as(u8, 0), bus.memRead(0x0000));
+    bus.memWrite(0x0000, 0x42);
+    try testing.expectEqual(@as(u8, 0x42), bus.memRead(0x0000));
+
+    // Test RAM mirroring
+    try testing.expectEqual(@as(u8, 0x42), bus.memRead(0x0800));
+    try testing.expectEqual(@as(u8, 0x42), bus.memRead(0x1000));
+    try testing.expectEqual(@as(u8, 0x42), bus.memRead(0x1800));
+}
+
+test "Bus - ROM reading" {
+    // Create a test ROM with known data
+    var testRom = try createTestRom(testing.allocator);
+    defer testRom.deinit();
+
+    var bus = Bus.init(testRom);
+
+    // Test reading from ROM area (0x8000-0xFFFF)
+    try testing.expectEqual(@as(u8, 1), bus.memRead(0x8000));  // First byte of PRG ROM
+    try testing.expectEqual(@as(u8, 1), bus.memRead(0xFFFC));  // Reset vector low byte
+    try testing.expectEqual(@as(u8, 0x80), bus.memRead(0xFFFD));  // Reset vector high byte
+}
+
+test "Bus - ROM write protection" {
+    // Create a test ROM with known data
+    var testRom = try createTestRom(testing.allocator);
+    defer testRom.deinit();
+
+    var bus = Bus.init(testRom);
+
+    // Try to write to ROM area (should be ignored for mapper 0)
+    bus.memWrite(0x8000, 0x42);
+    try testing.expectEqual(@as(u8, 1), bus.memRead(0x8000));  // Should still read original value
+}
+
+// Helper function to create a test ROM
+fn createTestRom(allocator: std.mem.Allocator) !Rom {
+    // Create a minimal ROM with:
+    // - 16KB PRG ROM filled with 1's
+    // - Reset vector pointing to 0x8001
+    var prgRom = try std.ArrayList(u8).initCapacity(allocator, 0x4000);
+    try prgRom.appendNTimes(1, 0x4000 - 4);  // Fill with 1's
+    try prgRom.append(0x01);  // Reset vector low byte
+    try prgRom.append(0x80);  // Reset vector high byte
+    try prgRom.append(0x00);  // Interrupt vector
+    try prgRom.append(0x00);  // Interrupt vector
+
+    var chrRom = try std.ArrayList(u8).initCapacity(allocator, 0x2000);
+    try chrRom.appendNTimes(2, 0x2000);  // Fill CHR ROM with 2's
+
+    return Rom{
+        .prgRom = prgRom,
+        .chrRom = chrRom,
+        .mapper = 0,
+        .screenMirroring = .horizontal,
+    };
+}
