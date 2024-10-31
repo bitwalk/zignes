@@ -50,5 +50,6 @@ Currently in development.
 - [x] Reset CPU
 - [x] Add Run with callbacks
 - [x] Snake game
-- [ ] Add support for cartridge ROM
+- [x] Add support for cartridge ROM
+- [x] Add support for snake rom
 - [ ] Make test rom work
