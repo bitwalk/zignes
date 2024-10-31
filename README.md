@@ -44,9 +44,11 @@ Currently in development.
 - [x] run method
 - [x] SDL2
 - [x] Update load
-- [ ] Refactor run to handle callbacks
+- [x] Refactor run to handle callbacks
 - [x] Instantiate CPU in main
 - [x] Load game code
 - [x] Reset CPU
-- [ ] Add Run with callbacks
-- [ ] Snake game
+- [x] Add Run with callbacks
+- [x] Snake game
+- [ ] Add support for cartridge ROM
+- [ ] Make test rom work
