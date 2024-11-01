@@ -134,3 +134,8 @@ pub fn main() !void {
         }
     }.call);
 }
+
+test "run all tests" {
+    // This will recursively run all tests in the current file and imported files
+    std.testing.refAllDecls(@This());
+}

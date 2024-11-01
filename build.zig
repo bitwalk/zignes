@@ -35,7 +35,16 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Add SDL2 configuration to tests
+    unit_tests.linkSystemLibrary("sdl2");
+    unit_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/sdl2/include" });
+    unit_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/sdl2/lib" });
+
+
     const run_unit_tests = b.addRunArtifact(unit_tests);
+    run_unit_tests.has_side_effects = true;
+
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+  
 }
