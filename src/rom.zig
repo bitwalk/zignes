@@ -50,17 +50,26 @@ pub const Rom = struct {
         try prgRom.appendSlice(raw[prgRomStart..][0..prgRomSize]);
         try chrRom.appendSlice(raw[chrRomStart..][0..chrRomSize]);
 
-        // Verify reset vector
         if (prgRomSize >= 0x4000) {
+            // Get reset vector from last 4 bytes (NES CPU reads from 0xFFFC-0xFFFD)
             const resetLo = prgRom.items[prgRom.items.len - 4];
             const resetHi = prgRom.items[prgRom.items.len - 3];
             const resetAddr = @as(u16, resetHi) << 8 | resetLo;
-            // Verify reset vector points to valid PRG ROM address
-            if (resetAddr < 0x8000 or resetAddr > 0xFFFF) {
-                std.debug.print("Warning: Reset vector 0x{X:0>4} points outside PRG ROM space!\n", .{resetAddr});
+            
+            // Since ROM data is mapped to 0x8000-0xFFFF in CPU space,
+            // we don't need to add 0x8000 to the reset vector as it's already
+            // relative to 0x8000
+            if (resetAddr < 0) {
+                std.debug.print(
+                    "Warning: Reset vector 0x{X:0>4} points below PRG ROM space (valid range: 0x0000-0x7FFF for ROM data)\n",
+                    .{resetAddr}
+                );
+            } else if (resetAddr >= prgRomSize) {
+                std.debug.print(
+                    "Warning: Reset vector 0x{X:0>4} points beyond PRG ROM size of 0x{X:0>4}\n",
+                    .{ resetAddr, prgRomSize }
+                );
             }
-        } else {
-            std.debug.print("Warning: PRG ROM too small to contain reset vector!\n", .{});
         }
 
         return Rom{
